@@ -18,8 +18,7 @@
 		approximateToHumanReadable,
 		extractSentences,
 		replaceTokens,
-		revertSanitizedResponseContent,
-		sanitizeResponseContent
+		processResponseContent
 	} from '$lib/utils';
 	import { WEBUI_BASE_URL } from '$lib/constants';
 
@@ -76,8 +75,7 @@
 	let tokens;
 
 	import 'katex/dist/katex.min.css';
-
-	import markedKatex from '$lib/utils/katex-extension';
+	import markedKatex from '$lib/utils/marked/katex-extension';
 
 	const options = {
 		throwOnError: false
@@ -88,7 +86,7 @@
 	$: (async () => {
 		if (message?.content) {
 			tokens = marked.lexer(
-				replaceTokens(sanitizeResponseContent(message?.content), model?.name, $user?.name)
+				replaceTokens(processResponseContent(message?.content), model?.name, $user?.name)
 			);
 		}
 	})();
@@ -495,7 +493,7 @@
 				{#if !edit}
 					{#if message.done || siblings.length > 1}
 						<div
-							class=" flex justify-start overflow-x-auto buttons text-gray-600 dark:text-gray-500"
+							class=" flex justify-start overflow-x-auto buttons text-gray-600 dark:text-gray-500 mt-0.5"
 						>
 							{#if siblings.length > 1}
 								<div class="flex self-center min-w-fit" dir="ltr">
@@ -822,10 +820,24 @@
 												?.annotation?.rating ?? null) === 1
 												? 'bg-gray-100 dark:bg-gray-800'
 												: ''} dark:hover:text-white hover:text-black transition"
-											on:click={() => {
-												rateMessage(message.id, 1);
-												showRateComment = true;
+											on:click={async () => {
+												await rateMessage(message.id, 1);
 
+												(model?.actions ?? [])
+													.filter((action) => action?.__webui__ ?? false)
+													.forEach((action) => {
+														dispatch('action', {
+															id: action.id,
+															event: {
+																id: 'good-response',
+																data: {
+																	messageId: message.id
+																}
+															}
+														});
+													});
+
+												showRateComment = true;
 												window.setTimeout(() => {
 													document
 														.getElementById(`message-feedback-${message.id}`)
@@ -857,8 +869,23 @@
 												?.annotation?.rating ?? null) === -1
 												? 'bg-gray-100 dark:bg-gray-800'
 												: ''} dark:hover:text-white hover:text-black transition"
-											on:click={() => {
-												rateMessage(message.id, -1);
+											on:click={async () => {
+												await rateMessage(message.id, -1);
+
+												(model?.actions ?? [])
+													.filter((action) => action?.__webui__ ?? false)
+													.forEach((action) => {
+														dispatch('action', {
+															id: action.id,
+															event: {
+																id: 'bad-response',
+																data: {
+																	messageId: message.id
+																}
+															}
+														});
+													});
+
 												showRateComment = true;
 												window.setTimeout(() => {
 													document
@@ -887,11 +914,26 @@
 										<Tooltip content={$i18n.t('Continue Response')} placement="bottom">
 											<button
 												type="button"
+												id="continue-response-button"
 												class="{isLastMessage
 													? 'visible'
 													: 'invisible group-hover:visible'} p-1.5 hover:bg-black/5 dark:hover:bg-white/5 rounded-lg dark:hover:text-white hover:text-black transition regenerate-response-button"
 												on:click={() => {
 													continueGeneration();
+
+													(model?.actions ?? [])
+														.filter((action) => action?.__webui__ ?? false)
+														.forEach((action) => {
+															dispatch('action', {
+																id: action.id,
+																event: {
+																	id: 'continue-response',
+																	data: {
+																		messageId: message.id
+																	}
+																}
+															});
+														});
 												}}
 											>
 												<svg
@@ -925,6 +967,20 @@
 												on:click={() => {
 													showRateComment = false;
 													regenerateResponse(message);
+
+													(model?.actions ?? [])
+														.filter((action) => action?.__webui__ ?? false)
+														.forEach((action) => {
+															dispatch('action', {
+																id: action.id,
+																event: {
+																	id: 'regenerate-response',
+																	data: {
+																		messageId: message.id
+																	}
+																}
+															});
+														});
 												}}
 											>
 												<svg
@@ -944,7 +1000,7 @@
 											</button>
 										</Tooltip>
 
-										{#each model?.actions ?? [] as action}
+										{#each (model?.actions ?? []).filter((action) => !(action?.__webui__ ?? false)) as action}
 											<Tooltip content={action.name} placement="bottom">
 												<button
 													type="button"
@@ -981,8 +1037,24 @@
 							messageId={message.id}
 							bind:show={showRateComment}
 							bind:message
-							on:submit={() => {
+							on:submit={(e) => {
 								updateChatMessages();
+
+								(model?.actions ?? [])
+									.filter((action) => action?.__webui__ ?? false)
+									.forEach((action) => {
+										dispatch('action', {
+											id: action.id,
+											event: {
+												id: 'rate-comment',
+												data: {
+													messageId: message.id,
+													comment: e.detail.comment,
+													reason: e.detail.reason
+												}
+											}
+										});
+									});
 							}}
 						/>
 					{/if}

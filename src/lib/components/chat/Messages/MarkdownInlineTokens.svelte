@@ -1,4 +1,5 @@
 <script lang="ts">
+	import DOMPurify from 'dompurify';
 	import type { Token } from 'marked';
 	import { revertSanitizedResponseContent, unescapeHtml } from '$lib/utils';
 	import { onMount } from 'svelte';
@@ -14,7 +15,14 @@
 	{#if token.type === 'escape'}
 		{unescapeHtml(token.text)}
 	{:else if token.type === 'html'}
-		{@html token.text}
+		{@const html = DOMPurify.sanitize(token.text)}
+		{#if html && html.includes('<video')}
+			{@html html}
+		{:else if token.text.includes(`<iframe src="${WEBUI_BASE_URL}/api/v1/files/`)}
+			{@html `${token.text}`}
+		{:else}
+			{token.text}
+		{/if}
 	{:else if token.type === 'link'}
 		<a href={token.href} target="_blank" rel="nofollow" title={token.title}>{token.text}</a>
 	{:else if token.type === 'image'}
@@ -28,7 +36,7 @@
 			<svelte:self id={`${id}-em`} tokens={token.tokens} />
 		</em>
 	{:else if token.type === 'codespan'}
-		<code class="codespan">{revertSanitizedResponseContent(token.raw)}</code>
+		<code class="codespan">{token.text}</code>
 	{:else if token.type === 'br'}
 		<br />
 	{:else if token.type === 'del'}
@@ -39,6 +47,14 @@
 		{#if token.text}
 			<KatexRenderer content={revertSanitizedResponseContent(token.text)} displayMode={false} />
 		{/if}
+	{:else if token.type === 'iframe'}
+		<iframe
+			src="{WEBUI_BASE_URL}/api/v1/files/{token.fileId}/content"
+			title={token.fileId}
+			width="100%"
+			frameborder="0"
+			onload="this.style.height=(this.contentWindow.document.body.scrollHeight+20)+'px';"
+		></iframe>
 	{:else if token.type === 'text'}
 		{token.raw}
 	{/if}
